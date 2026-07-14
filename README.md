@@ -10,18 +10,25 @@ A Plymouth boot splash theme for Arch Linux featuring a minimalist official Arch
 
 ## Installation
 
-### 1. Install Theme Files
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/brawler2011/plymouth-theme-arch-logo-symbol-blue
+cd plymouth-theme-arch-logo-symbol-blue
+```
+
+### 2. Install Theme Files
 
 ```bash
 sudo make install
 ```
 
-### 2. Activate the Theme
+### 3. Activate the Theme
 
 ```bash
 sudo plymouth-set-default-theme -R arch-logo-symbol-blue
 ```
 
-я---
+---
 
 **Author**: [github.com/brawler2011](https://github.com/brawler2011)
