@@ -1,0 +1,77 @@
+name: Publish to AUR
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  aur-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get version from release tag
+        id: get_version
+        run: |
+          # Strip 'v' prefix from tag (e.g. v1.0.1 -> 1.0.1)
+          VERSION=${{ github.event.release.tag_name }}
+          VERSION=${VERSION#v}
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Update PKGBUILD variables
+        run: |
+          VERSION=${{ steps.get_version.outputs.version }}
+          TARBALL_URL="https://github.com/brawler2011/plymouth-theme-arch-logo-symbol-blue/archive/refs/tags/${{ github.event.release.tag_name }}.tar.gz"
+          
+          # Download release archive to calculate checksum
+          curl -L -o release.tar.gz "$TARBALL_URL"
+          SHA256=$(sha256sum release.tar.gz | cut -d' ' -f1)
+          
+          # Update version, checksum, and pkgrel in PKGBUILD
+          sed -i "s/pkgver=.*/pkgver=${VERSION}/" PKGBUILD
+          sed -i "s/sha256sums=.*/sha256sums=('${SHA256}')/" PKGBUILD
+          sed -i "s/pkgrel=.*/pkgrel=1/" PKGBUILD
+
+      - name: Generate .SRCINFO
+        # Use official Arch Linux container to generate .SRCINFO
+        uses: docker://archlinux:latest
+        with:
+          args: |
+            bash -c "
+            pacman -Syu --noconfirm base-devel git &&
+            useradd -m builder &&
+            chown -R builder:builder . &&
+            runuser -u builder -- makepkg --printsrcinfo > .SRCINFO
+            "
+
+      - name: Commit & Push to AUR
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+        run: |
+          # Configure SSH agent for AUR authentication
+          mkdir -p ~/.ssh
+          echo "$AUR_SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -t ed25519 aur.archlinux.org >> ~/.ssh/known_hosts
+          
+          # Configure Git user details
+          git config --global user.name "brawler2011 (GitHub Action)"
+          git config --global user.email "slavabirin1@yandex.ru"
+          
+          # Clone the AUR repository (it is automatically created on first push)
+          git clone ssh://aur@aur.archlinux.org/plymouth-theme-arch-logo-symbol-blue.git /tmp/aur-repo
+          
+          # Copy updated PKGBUILD and .SRCINFO to the AUR repository
+          cp PKGBUILD .SRCINFO /tmp/aur-repo/
+          
+          cd /tmp/aur-repo
+          git add PKGBUILD .SRCINFO
+          
+          # Check if there are changes, and if so, commit and push
+          if ! git diff-index --quiet HEAD; then
+            git commit -m "Update to version ${{ steps.get_version.outputs.version }}"
+            git push origin master
+          else
+            echo "No changes detected."
+          fi
